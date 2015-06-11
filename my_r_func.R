@@ -162,3 +162,101 @@ Main <- function(gse){
   dat.test <- MatrixTest(dat.proc$g0,dat.proc$g1)
   return(list(exp=dat.proc, test=dat.test))
 }
+
+SelectGene <- function(m,colname,thres){
+  output<- m[which(m[,colname]<=thres),]
+  return(output)
+}
+
+CommAndSpec <- function(m.list,colname){
+  probs <- vector()
+  for (i in m.list){
+    probs <- c(probs,i[,colname])
+  }
+  # remove duplicated
+  probs <- unique(probs)
+  # remove ""
+  probs <- probs[!probs %in% ""]
+
+  output <- cbind(1:length(probs),probs)
+  colna <- vector()
+  for(i in 1:length(m.list)){
+    colna <- c(colna,names(m.list[i]))
+    mat <- match(probs,m.list[[i]][,colname])
+    output <- cbind(output,mat)
+  }
+  num <- vector()
+  num <- rowSums(!is.na(output[,-1:-2]))
+  output <- cbind(output,num)
+  colnames(output)<- c("Index","Probes", colna,"cancer_num")
+  return(output[,-1])
+}
+# small sample
+a <- renal$test
+a_p <- renal$exp$prob
+b <- lung$test
+c <- panc$test
+b_p <- lung$exp$prob
+c_p <- panc$exp$prob
+
+a <- cbind(a,"geneID"=as.character(a_p[match(rownames(a),a_p[,"ID"]),"ENTREZ_GENE_ID"]))
+b <- cbind(b,"geneID"=as.character(b_p[match(rownames(b),b_p[,"ID"]),"ENTREZ_GENE_ID"]))
+c <- cbind(c,"geneID"=as.character(c_p[match(rownames(c),c_p[,"ID"]),"ENTREZ_GENE_ID"]))
+
+a.sel <- SelectGene(a,"t.adjust-p",0.05)
+b.sel <- SelectGene(b,"t.adjust-p",0.05)
+c.sel <- SelectGene(c,"t.adjust-p",0.05)
+
+a.sel <- SelectGene(a.sel,"w.adjust-p",0.05)
+b.sel <- SelectGene(b.sel,"w.adjust-p",0.05)
+c.sel <- SelectGene(c.sel,"w.adjust-p",0.05)
+list.sample <- list("renal"=a.sel,"lung"=b.sel,"panc"=c.sel)
+
+res <- CommAndSpec(list.sample,"geneID")
+
+o.list <- list("colon"=colon,"liver"=liver,"panc"=panc,"renal"=renal,"lung"=lung,"breast"=breast)
+o.list <- list("colon"=colon,"liver"=liver)
+Main_Select <- function(obj.list){
+  mat.list <- list() 
+  # select genes with p<0.05
+  for(i in 1:length(obj.list)){
+    n <- names(obj.list[i])
+    exp <- obj.list[[i]]$test
+    mat.list[[n]] <- SelectGene(SelectGene(exp,"t.adjust-p",0.05),"w.adjust-p",0.05)
+  }
+  # identify common gene indientfier
+  p_info <- list()
+  gene.col <- character()
+  for(i in 1:length(obj.list)){
+    p_info[[i]]<- colnames(obj.list[[i]]$exp$prob)
+  }
+  comm.pinfo <- Reduce(intersect,p_info)
+  print(comm.pinfo)
+  inp <- readline("choose which is used as gene indentifer(GB_ACC:Gene Bank ID)\t")
+  gene.col <- comm.pinfo[as.numeric(inp)]
+  print(gene.col)
+  # add gene info 
+  for(i in 1:length(obj.list)){
+    mat.p <- obj.list[[i]]$exp$prob
+    mat.e <- mat.list[[i]]
+    mat.list[[i]] <-cbind(mat.e,geneID=as.character(mat.p[,gene.col]))
+  }
+  output <- CommAndSpec(mat.list,"geneID")
+  print(nrow(output))
+  print(nrow(output[which(output[,"cancer_num"]==1),]))
+  print(nrow(output[which(output[,"cancer_num"]==2),]))
+  print(nrow(output[which(output[,"cancer_num"]==3),]))
+  print(nrow(output[which(output[,"cancer_num"]==4),]))
+  print(nrow(output[which(output[,"cancer_num"]==5),]))
+
+  t<- output[which(output[,"cancer_num"]==1),]
+  print(nrow(t[which(!is.na(t[,"colon"])),]))
+  print(nrow(t[which(!is.na(t[,"liver"])),]))
+  print(nrow(t[which(!is.na(t[,"panc"])),]))
+  print(nrow(t[which(!is.na(t[,"renal"])),]))
+  print(nrow(t[which(!is.na(t[,"lung"])),]))
+  print(nrow(t[which(!is.na(t[,"breast"])),]))
+
+  return(output)
+}
+selected <- Main_Select(o.list)
