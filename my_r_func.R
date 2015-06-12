@@ -1,139 +1,173 @@
-## to be add to git
-## Version info: R 3.2.0, bioconductor 3.1
-## Usage: 
-
-## install packages
-## biocLite()
+# Version info: R 3.2.0, bioconductor 3.1
+# Install packages
 source("http://bioconductor.org/biocLite.R")
 biocLite()
-
-## GEOquery, limma 
+# GEOquery, limma 
 biocLite("GEOquery")
 biocLite("limma")
-
-## read into R
 library(GEOquery)
 library(limma)
 
-## prase GSE files
-# add G0 as disease, G1 as normal
 ParseGSE <- function(f){
-  # recive GSEnumber , and return a list with "exp"=expression data, "prob"=probe infomation, "pat"=patients information
-  # "norml"=is.normalized, "deal.NA"=is dealed with NA, "group"=is pat grouped as control or treated for test.
+  # extract expression values, probes and patients information from GEO SOFT.GZ files.
+  #
+  # Arvgs:
+  #  f: GES number (e.x."GSE31023")
+  #
+  # Returns:
+  #  list which contains:
+  #    "oexp": original expression values matrix (prob.ID vs. patients)
+  #    "pat": patients information matrix (info.col vs. patients.ID)
+  #    "prob": probes information matrix (prob.ID vs. info.col)
+  
   gse <- getGEO(f,GSEMatrix=FALSE)
-  gpls <- GPLList(gse) #list of array: gpls[[1]]==> first array
-  gsms <- GSMList(gse) #list of patients: gsms[[1]] ==> first patient
-  
-  # validation-1,2: if gse's platform_id == gpl's geo_accession / gsm's platform_id
-  # validation-3: if probes in each patients is same.
-  g1<-Meta(gse)$platform_id # common platform id
-  pro1<-Table(gsms[[1]])$ID #icommon probes
-  
-  for(i in 1:length(gpls)){
-    g2 <- Meta(gpls[[i]])$geo_accession
-    pro2 <- Table(gpls[[i]])$ID
-    ifelse(g1==g2,NA,print(paste("Waring: gpl(array):",i,"is wrong and should be checked!!!!!!!!!"))
-    )
-  }
-  cat("\n") # print can not use "\n"
- 
-  for(i in 1:length(gsms)){
-    g2<-Meta(gsms[[i]])$platform_id
-    pro2 <- Table(gsms[[i]])$ID
-    ifelse(g1==g2,NA,print(paste("Waring: gsm(array):",i,"is wrong and should be checked!!!!!!!!!"))
-    )
-    ifelse(pro1==pro2,NA,print(paste("Waring: probes of patient:",i,"is wrong and should be checked!!!!!!!!!"))
-    )
-  }
-  
+  gpls <- GPLList(gse)
+  gsms <- GSMList(gse)
+
   # Extract values into matrix 
-  ## should be changed. rowname is wroong..................................
   exp <- do.call("cbind", lapply(gsms, function(x) as.numeric(Table(x)$VALUE)))  
-  rownames(exp) <- pro1
+  rownames(exp) <- Table(gsms[[1]])$ID
   
-  # Extract patients infomation
-  #pat_info <- do.call("rbind", lapply(gsms, function(x) Meta(x)$characteristics_ch1))
-  #pat_info <- do.call("rbind", lapply(gsms, function(x) Meta(x)[1:5]))
-  #pat_info <- do.call("rbind", lapply(gsms, function(x) Meta(x)[1:length(Meta(x))]))
-  pat_info <- do.call("cbind", lapply(gsms, function(x) unlist(Meta(x))))
-  #pat_info <- matrix(unlist(), ncol = 10, byrow = TRUE)
-    # Extract probes info
-  p_info <- Table(gpls[[1]])
-  return(list(exp=exp, prob=p_info,pat=pat_info))
+  # Extract patients information
+  pat.info <- do.call("cbind", lapply(gsms, function(x) unlist(Meta(x))))
+  # Usage: unlist() --> list to matrix (value vs. names)\
+  
+  # Extract probes information
+  prob.info <- Table(gpls[[1]])
+  
+  return(list(oexp=exp, prob=prob.info,pat=pat.info))
 }
 
-GroupPat <- function(m.pat){
-  ind <- vector()
+ctc <- ParseGSE("GSE31023")
+
+Step1 <- function(f){
+  # integrated function to anaysis GSE data
+  #
+  # Args:
+  #  f: GES number
+  #
+  # Returns:
+  #  list which contains: 
+  #     "oexp" for normalized expression data
+  #     "pat" for patients information with divided for groups(control vs treat) 
+  #     "prob" for probes information
+  #     "test" for t.test and wilcox.test result
+  obj <- ParseGSE(f)
+  obj$pat <- GroupPat(obj$pat)  # Update obj.pat with adding group information
+  obj$oexp <- PreProc(obj$oexp)  # Update ojb.exp with normalization.
+  obj$test <- MatrixTest(obj.oexp,obj$pat[,"group"],manner=2)
+  return(obj)
+}
+
+GroupPat <- function(pat){
+  # Divide patients into different groups (control vs treatment)
+  #
+  # Args:
+  #  pat: matrix which contains patients information (ex. Meta(gsm))
+  #
+  # Returns:
+  #  transposed original matrix with one more colum of "group" contains "G0" or "G1"
+  #  matrix (patient.ID vs. information.categories)
+  
+  # Print all possible useful information to decide group.
   ii <- 0
-  for(i in 1:nrow(m.pat)){
-    f <- levels(factor(m.pat[i,]))
-    if(length(f)>1 & length(f) < ncol(m.pat)){
+  index <- vector()
+  for(i in 1:nrow(pat)){
+    f <- levels(factor(pat[i,]))  # summarize all items in one catalog of information.
+    if(length(f)>1 & length(f) < ncol(pat)){
       ii <- ii+1
-      ind <- c(ind,i)
+      index <- c(index,i)
       print(paste(ii,"-",f))
     }
   }
-  inp <- as.numeric(readline(prompt="choose which col contains infomation to identify groups:\t"))
-  inp <- ind[inp]
-  cat("input the name for each groups, 'G0' for control, 'G1' for disease, no_input for not use:\n")
-  #fac.1 <- as.character(levels(factor(m.pat[inp,]))[1])
-  #fac.2 <- as.character(levels(factor(m.pat[inp,]))[2])
-  fac <- as.character(levels(factor(m.pat[inp,])))
-  g.name <- character()
-  for(i in fac){
-    g.name <- c(g.name,readline(prompt=paste(i,":\t")))
-  }
-  #g.name.1 <- readline(prompt=paste(fac.1,":\t"))
-  #g.name.2 <- readline(prompt=paste(fac.2,":\t"))
-  m.pat <- rbind(m.pat,group = NA)
-  for(i in 1:length(fac)){
-    m.pat[nrow(m.pat),which(m.pat[inp,]==fac[i])] =g.name[i]
-  }
-  #m.pat[nrow(m.pat),which(m.pat[inp,]==fac.1)] =g.name.1
-  #m.pat[nrow(m.pat),which(m.pat[inp,]==fac.2)] =g.name.2
-  return(t(m.pat))
-}
-
-PreProc <- function(lm){
-# recive list obj from parseGSE/groupPat fun.
-  exp <- lm$exp
-  m0 <- matrix()
-  m1 <- matrix()
-  print("normalization")
-  lm$exp <- normalizeQuantiles(exp)
-  cat("Done!\n")
-  cname.0 <- rownames(lm$pat[which(lm$pat[,"group"]=="G0"),])
-  cname.1 <- rownames(lm$pat[which(lm$pat[,"group"]=="G1"),])
-  #lm$g0 <- exp[,which(colnames(exp)==cname.0)]
-  #lm$g1 <- exp[,which(colnames(exp)==cname.1)]
-  lm$g0 <- exp[,match(cname.0, colnames(exp))]
-  lm$g1 <- exp[,match(cname.1, colnames(exp))]
-  return(lm)
-}
   
-MatrixTest <- function(d1,d2){
-  var.p <- var.test(d1,d2)$p.value
-  var.equ <- FALSE
-  num.d1 <- vector()
-  num.d2 <- vector()
-  if(var.p <= 0.05) var.equal <- TRUE
-
-  output <- matrix(ncol=4)
-  total <- nrow(d1)
-  cat("calculate number of value\n")
-  pd <- txtProgressBar(min=0,max=total,style=3)
-  # count value number
-  for (i in 1:nrow(d1)){
-    setTxtProgressBar(pd,i)
-    num.d1 <- c(num.d1,sum(!is.na(d1[i,])))
-    num.d2 <- c(num.d2,sum(!is.na(d2[i,])))
+  # Choose and decide groups.
+  iput <- as.numeric(readline(prompt="Which group contains infomation to devide patients to control or treatment:\t"))
+  iput <- index[iput]
+  cat("typing the name for each group\n")
+  cat("'G0' for control, 'G1' for disease, leaving blank will be not used.:\n")
+  decision <- as.character(levels(factor(pat[iput,])))  # all items in selected catalog of information 
+  iput.name <- character()
+  for(i in decision){
+    iput.name <- c(iput.name,readline(prompt=paste(i,":\t")))
   }
-  close(pd)
-  # for t.test and wil.test
-  cat("calculate t.test and wilcox.test\n")
+  
+  # Add colum contain grouping informaiton.
+  pat <- rbind(pat,group = NA)
+  for(i in 1:length(decision)){
+    pat[nrow(pat),which(pat[iput,]==decision[i])] =iput.name[i]
+  }
+  
+  return(t(pat))
+  # Usage: t(matrix) : transpose matrix. 
+}
+
+PreProc <- function(exp){
+  # normalizate microarray data with quantiles normalize
+  # TODO: deal with NA values
+  # 
+  # Args:
+  #  exp: expression value matrix (probs.ID vs. patients)
+  #
+  # Returns:
+  #  not decided
+  
+  # Normalization
+  print("normalization")
+  exp <- normalizeQuantiles(exp)
+  cat("Done!\n")
+
+  # TODO: deal with NA values
+
+  return(exp)
+}
+
+MatrixTest <- function(x,y,
+                       manner=1){
+  # perform t.test and wilcox.text to every row of matrix
+  #
+  # Args:
+  #  if manner == 1 (default): x is matrix 1, and y is matrix 2 for test(x,y)
+  #  if manner == 2 : x is total matrix, y is binary factor vector for test(x~y)
+  #
+  # Returns:
+  #  matrix probes vs. categories of test result
+  #    test result: t.test and wilcox.test's statstic, p-value and adjust p-value
+  
+  d1 <- matrix()
+  d2 <- matrix()
+  
+  # determine the data matrix for test
+  if (manner==1){
+    d1 <- x
+    d2 <- y
+  }else if(manner ==2){
+    if (length(y)==ncol(x)){
+      sp <- split(1:ncol(x),y)  # sp=list, name is factor, and value is colum index number
+      d1 <- x[,sp[[1]]]
+      d2 <- x[,sp[[2]]]
+    }else print("length of y is not match for colum of x")
+  }else {print("wrong manner")}
+
+  # test whether varance equal
+  var.equ <- FALSE
+  var.p <- var.test(d1,d2)$p.value
+  if(var.p <= 0.05) var.equal <- TRUE
+  
+  # Perform test
+  output <- matrix(ncol=4)
+  
+  
+  cat("* calculating number of value\n\n")
+  avl.d1 <- rowSums(!is.na(d1))
+  avl.d2 <- rowSums(!is.na(d2))
+
+  # Available value should be more than 3
+  cat("* calculating t.test and wilcox.test\n")
+  pd <- txtProgressBar(min=0,max=nrow(d1),style=3)
   for (i in 1:nrow(d1)){
     setTxtProgressBar(pd,i)
-    if(num.d1[i]<3 | num.d2[i]<3){
+    if(avl.d1[i]<3 | avl.d2[i]<3){
       output <- rbind(output,c(NA,NA,NA,NA))
     }else{
       t <- t.test(d1[i,],d2[i,],var.equal=var.equ)
@@ -144,24 +178,18 @@ MatrixTest <- function(d1,d2){
   close(pd)
   cat("\n")
 
-  # add adjust p value
+  # Add adjust p value
+  cat("* Adjusting p value with FDR\n\n")
   output <- cbind(output[,1:2],fdr.t.p=p.adjust(output[,1],method="BH"),
                   output[,3:4],dfr.t.p=p.adjust(output[,3],method="BH"))
 
-  # add rowname and colname
+  # Add rowname and colname
   colnames(output) <- c("t.p-value","t.statistic","t.adjust-p","w.p-value","w.statistic","w.adjust-p")
   output <- output[-1,]
   rownames(output) <- rownames(d1)
   return(output)
 }
 
-Main <- function(gse){
-  dat <- ParseGSE(gse)
-  dat$pat <- GroupPat(dat$pat)
-  dat.proc <- PreProc(dat)
-  dat.test <- MatrixTest(dat.proc$g0,dat.proc$g1)
-  return(list(exp=dat.proc, test=dat.test))
-}
 
 SelectGene <- function(m,colname,thres){
   output<- m[which(m[,colname]<=thres),]
