@@ -38,27 +38,6 @@ ParseGSE <- function(f){
   return(list(oexp=exp, prob=prob.info,pat=pat.info))
 }
 
-ctc <- ParseGSE("GSE31023")
-
-Step1 <- function(f){
-  # integrated function to anaysis GSE data
-  #
-  # Args:
-  #  f: GES number
-  #
-  # Returns:
-  #  list which contains: 
-  #     "oexp" for normalized expression data
-  #     "pat" for patients information with divided for groups(control vs treat) 
-  #     "prob" for probes information
-  #     "test" for t.test and wilcox.test result
-  obj <- ParseGSE(f)
-  obj$pat <- GroupPat(obj$pat)  # Update obj.pat with adding group information
-  obj$oexp <- PreProc(obj$oexp)  # Update ojb.exp with normalization.
-  obj$test <- MatrixTest(obj.oexp,obj$pat[,"group"],manner=2)
-  return(obj)
-}
-
 GroupPat <- function(pat){
   # Divide patients into different groups (control vs treatment)
   #
@@ -157,7 +136,6 @@ MatrixTest <- function(x,y,
   # Perform test
   output <- matrix(ncol=4)
   
-  
   cat("* calculating number of value\n\n")
   avl.d1 <- rowSums(!is.na(d1))
   avl.d2 <- rowSums(!is.na(d2))
@@ -191,59 +169,107 @@ MatrixTest <- function(x,y,
 }
 
 
-SelectGene <- function(m,colname,thres){
+SelectThres <- function(m,p.col,
+                       thres=0.05){
+  # Extract elements which p-values is under threshord
+  #
+  # Args:
+  #  m: data matrix (elements vs. value categories)
+  #  p.col: colum name which stand for the p-value.
+  #  thres: threshord setted, usually 0.05 or 0.01 or 0.001 
+  #
+  # Returns:
+  #  matrix which is subsection of input matrix, contains elements under thresord (elements vs. value categories)
+
   output<- m[which(m[,colname]<=thres),]
   return(output)
 }
 
-CommAndSpec <- function(m.list,colname){
-  probs <- vector()
-  for (i in m.list){
-    probs <- c(probs,i[,colname])
-  }
-  # remove duplicated
-  probs <- unique(probs)
-  # remove ""
-  probs <- probs[!probs %in% ""]
+ProbsToGene <- function(lst){
+  # select common chars among each list'element
+  #
+  # Args:
+  #  lst: list with each element contains a list with indivdual exptression matrx and related probes infomation matrix
+  #  lst[[i]]: one set of data, lst[[i]][[1]]: expression matrix in set, lst[[i]][[2]]: probes matrix
+  #
+  # Returns:
+  #  list with each elements contains a expression matrix but with last column(colnames: "geneID") stand for gene identifier
+  #  if input list contains names, output list will contains same names.
 
-  output <- cbind(1:length(probs),probs)
-  colna <- vector()
-  for(i in 1:length(m.list)){
-    colna <- c(colna,names(m.list[i]))
-    mat <- match(probs,m.list[[i]][,colname])
-    output <- cbind(output,mat)
+  # Choose category to stand for gene
+  gene.ide <- character()
+  probe.ide <- character()
+  comm <- lapply(lst,function(x) colnames(x[[2]]))  # extract probe info categories
+  comm <- Reduce(intersect,comm) # choose common categories
+  print(comm)
+  if(length(comm)>1){
+    iput <- readline("choose common elements will be used follow as gene identifier. (input index number)\t")
+    iput.2 <- readline("choose common elements stand for probes ID. (input index number)\t")
+    gene.ide <- comm[as.numeric(iput)]
+    probe.ide <- comm[as.numeric(iput.2)]
+  }else{
+    print("only one common coloums, something wrong")
   }
-  num <- vector()
-  num <- rowSums(!is.na(output[,-1:-2]))
-  output <- cbind(output,num)
-  colnames(output)<- c("Index","Probes", colna,"cancer_num")
-  return(output[,-1])
+
+  # Add gene identifier to exp matrix
+  output <- lapply(lst,function(x){
+    data.frame(x[[1]],"geneID"=as.character(x[[2]][match(rownames(x[[1]]),x[[2]][,probe.ide]),gene.ide]))  # cbind cannot bind numeric and char together.
+  })
+  return(output)
 }
-# small sample
-a <- renal$test
-a_p <- renal$exp$prob
-b <- lung$test
-c <- panc$test
-b_p <- lung$exp$prob
-c_p <- panc$exp$prob
 
-a <- cbind(a,"geneID"=as.character(a_p[match(rownames(a),a_p[,"ID"]),"ENTREZ_GENE_ID"]))
-b <- cbind(b,"geneID"=as.character(b_p[match(rownames(b),b_p[,"ID"]),"ENTREZ_GENE_ID"]))
-c <- cbind(c,"geneID"=as.character(c_p[match(rownames(c),c_p[,"ID"]),"ENTREZ_GENE_ID"]))
+o.list <- list("colon"=colon$exp$exp,"liver"=liver$exp$exp)
+p.lst <- list(colon=list(colon$exp$exp,colon$exp$prob),liver=list(liver$exp$exp,liver$exp$prob))
+o.list <- ProbsToGene(p.lst) 
+a<-SelectSpec(o.list, "geneID")
+print(class(a))
+print(a[1:10,])
+print(colnames(a))
+print(nrow(a[which(a[,"num.cancer"]==1),]))
+print(nrow(a[which(a[,"num.cancer"]==2),]))
+print(nrow(a[which(a[,"num.cancer"]==3),]))
+print(nrow(a[which(a[,"num.cancer"]==4),]))
+print(nrow(a[which(a[,"num.cancer"]==5),]))
 
-a.sel <- SelectGene(a,"t.adjust-p",0.05)
-b.sel <- SelectGene(b,"t.adjust-p",0.05)
-c.sel <- SelectGene(c,"t.adjust-p",0.05)
+SelectSpec <- function(dats,identi){
+  # Classify specific genes which exist in only one caner, or two cancers, three cancers....
+  #
+  # Args:
+  #  dats: list of expression data.frame
+  #    data.frames: probsID vs. patientsID, with last colums(colnames: "geneID") is geneID (e.x. GB_ACC)
+  #  identi: coloum name which point out the coloums stand for the genes ID number.
+  #         It's should be same with last coloums of data.frame in dats.
+  #
+  # Returns:
+  #  list with "mat" contains matrix geneID vs. the gene in each matrix and total num matrix containing gene
+  #            "sum" contains statistic information summary matrix 
 
-a.sel <- SelectGene(a.sel,"w.adjust-p",0.05)
-b.sel <- SelectGene(b.sel,"w.adjust-p",0.05)
-c.sel <- SelectGene(c.sel,"w.adjust-p",0.05)
-list.sample <- list("renal"=a.sel,"lung"=b.sel,"panc"=c.sel)
+  # Combine all elements into one vector
+  identi.lst <- lapply(dats,function(x) x[,identi])
+  identi.all <- factor()
+  for (i in identi.lst) identi.all <- factor(c(as.character(identi.all),as.character(i)))
+  # usage: link two factor: factor(c(as.chararcter(),as.character()))
+  identi.all <- unique(identi.all)  # remove duplicated elem
+  identi.all <- identi.all[!identi.all %in% ""]  # remove blank elem like ""
 
-res <- CommAndSpec(list.sample,"geneID")
+  # Match total identifier list to each matrix data
+  mat <- do.call("cbind",lapply(dats,function(x) match(identi.all, x[,identi])))
+  mat <- data.frame("geneID"=identi.all,"num.cancer"=rowSums(!is.na(mat)),mat)
+   
+  # summarize specific genes numbers and other infomation.
+  summ <- data.frame()
+  cancer.1 <- mat[which(mat[,"num.cancer"]==1),]
+  for(i in 1:length(dats)){
+    dat.name <- names(dats[i])
+    gene.total <- nrow(dats[i])
+    gene.1 <- nrow(cancer.1[which(!is.na(cancer.1[,dat.name])),])
+    summ<- rbind(summ,c(dat.name,gene.total,gene.1))
+  }
+  print(summ)
 
-o.list <- list("colon"=colon,"liver"=liver,"panc"=panc,"renal"=renal,"lung"=lung,"breast"=breast)
-o.list <- list("colon"=colon,"liver"=liver)
+  #return(output)
+}
+
 Main_Select <- function(obj.list){
   mat.list <- list() 
   # select genes with p<0.05
@@ -252,18 +278,7 @@ Main_Select <- function(obj.list){
     exp <- obj.list[[i]]$test
     mat.list[[n]] <- SelectGene(SelectGene(exp,"t.adjust-p",0.05),"w.adjust-p",0.05)
   }
-  # identify common gene indientfier
-  p_info <- list()
-  gene.col <- character()
-  for(i in 1:length(obj.list)){
-    p_info[[i]]<- colnames(obj.list[[i]]$exp$prob)
-  }
-  comm.pinfo <- Reduce(intersect,p_info)
-  print(comm.pinfo)
-  inp <- readline("choose which is used as gene indentifer(GB_ACC:Gene Bank ID)\t")
-  gene.col <- comm.pinfo[as.numeric(inp)]
-  print(gene.col)
-  # add gene info 
+ # add gene info 
   for(i in 1:length(obj.list)){
     mat.p <- obj.list[[i]]$exp$prob
     mat.e <- mat.list[[i]]
@@ -287,4 +302,33 @@ Main_Select <- function(obj.list){
 
   return(output)
 }
-selected <- Main_Select(o.list)
+Step1 <- function(f){
+  # integrated function to anaysis GSE data
+  #
+  # Args:
+  #  f: GES number
+  #
+  # Returns:
+  #  list which contains: 
+  #     "oexp" for normalized expression data
+  #     "pat" for patients information with divided for groups(control vs treat) 
+  #     "prob" for probes information
+  #     "test" for t.test and wilcox.test result
+
+  obj <- ParseGSE(f)
+  obj$pat <- GroupPat(obj$pat)  # Update obj.pat with adding group information
+  obj$oexp <- PreProc(obj$oexp)  # Update ojb.exp with normalization.
+  obj$test <- MatrixTest(obj$oexp,obj$pat[,"group"],manner=2)
+  obj$sig <- SelectThres(SelectThres(obj$oexp,"t.adjust-p",thres=0.001),"w.adjust-p",thres=0.001)  # Select significant genes with t.test and wilcox test
+  #o.list <- list("colon"=colon$exp$exp,"liver"=liver,"panc"=panc,"renal"=renal,"lung"=lung,"breast"=breast)
+  o.list <- list("colon"=colon$exp$exp,"liver"=liver$exp$exp,"panc"=panc,"renal"=renal,"lung"=lung,"breast"=breast)
+  p.lst <- list(colon=list(colon$exp$exp,colon$exp$prob),liver=list(liver$exp$exp,liver$exp$prob))
+  vprob <- list(colnames(colon$prob),colnames(liver$prob),colnames(panc$prob),colnames(renal$prob),colnames(lung$prob),colnames(breast$prob))
+
+  gene.ident <- CommChar(intersect,vprob)
+
+
+  return(obj)
+}
+
+elected <- Main_Select(o.list)
