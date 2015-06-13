@@ -16,7 +16,7 @@ ParseGSE <- function(f){
   #
   # Returns:
   #  list which contains:
-  #    "oexp": original expression values matrix (prob.ID vs. patients)
+  #    "exp": original expression values matrix (prob.ID vs. patients)
   #    "pat": patients information matrix (info.col vs. patients.ID)
   #    "prob": probes information matrix (prob.ID vs. info.col)
   
@@ -35,7 +35,7 @@ ParseGSE <- function(f){
   # Extract probes information
   prob.info <- Table(gpls[[1]])
   
-  return(list(oexp=exp, prob=prob.info,pat=pat.info))
+  return(list(exp=exp, prob=prob.info,pat=pat.info))
 }
 
 GroupPat <- function(pat){
@@ -89,7 +89,7 @@ PreProc <- function(exp){
   #  exp: expression value matrix (probs.ID vs. patients)
   #
   # Returns:
-  #  not decided
+  #  same matrix but with value is normalized. 
   
   # Normalization
   print("normalization")
@@ -136,7 +136,6 @@ MatrixTest <- function(x,y,
   # Perform test
   output <- matrix(ncol=4)
   
-  cat("* calculating number of value\n\n")
   avl.d1 <- rowSums(!is.na(d1))
   avl.d2 <- rowSums(!is.na(d2))
 
@@ -168,7 +167,6 @@ MatrixTest <- function(x,y,
   return(output)
 }
 
-
 SelectThres <- function(m,p.col,
                        thres=0.05){
   # Extract elements which p-values is under threshord
@@ -181,7 +179,7 @@ SelectThres <- function(m,p.col,
   # Returns:
   #  matrix which is subsection of input matrix, contains elements under thresord (elements vs. value categories)
 
-  output<- m[which(m[,colname]<=thres),]
+  output<- m[which(m[,p.col]<=thres),]
   return(output)
 }
 
@@ -218,18 +216,6 @@ ProbsToGene <- function(lst){
   return(output)
 }
 
-o.list <- list("colon"=colon$exp$exp,"liver"=liver$exp$exp)
-p.lst <- list(colon=list(colon$exp$exp,colon$exp$prob),liver=list(liver$exp$exp,liver$exp$prob))
-o.list <- ProbsToGene(p.lst) 
-a<-SelectSpec(o.list, "geneID")
-print(class(a))
-print(a[1:10,])
-print(colnames(a))
-print(nrow(a[which(a[,"num.cancer"]==1),]))
-print(nrow(a[which(a[,"num.cancer"]==2),]))
-print(nrow(a[which(a[,"num.cancer"]==3),]))
-print(nrow(a[which(a[,"num.cancer"]==4),]))
-print(nrow(a[which(a[,"num.cancer"]==5),]))
 
 SelectSpec <- function(dats,identi){
   # Classify specific genes which exist in only one caner, or two cancers, three cancers....
@@ -256,53 +242,31 @@ SelectSpec <- function(dats,identi){
   mat <- do.call("cbind",lapply(dats,function(x) match(identi.all, x[,identi])))
   mat <- data.frame("geneID"=identi.all,"num.cancer"=rowSums(!is.na(mat)),mat)
    
-  # summarize specific genes numbers and other infomation.
-  summ <- data.frame()
-  cancer.1 <- mat[which(mat[,"num.cancer"]==1),]
+  # summarize specific genes numbers for each cancers.
+  spec.gene <- mat[which(mat[,"num.cancer"]==1),]  # all genes which expresed in only one cancer
   for(i in 1:length(dats)){
-    dat.name <- names(dats[i])
-    gene.total <- nrow(dats[i])
-    gene.1 <- nrow(cancer.1[which(!is.na(cancer.1[,dat.name])),])
-    summ<- rbind(summ,c(dat.name,gene.total,gene.1))
+    dat.name <- names(dats[i])  # cancer name
+    gene.total <- nrow(dats[[i]])  # total gene num
+    gene.1 <- nrow(spec.gene[which(!is.na(spec.gene[,dat.name])),])  # specific gene num
+    rat <- round(gene.1 / gene.total,4)*100
+    s <- c(dat.name,gene.total,gene.1,rat)
+    ifelse(!exists("summ"),summ<-s, summ <- rbind(summ,s))
   }
-  print(summ)
+  rownames(summ) <- summ[,1]
+  summ <- summ[,-1]
+  colnames(summ) <- c("total","specific gene","percent(%)")
 
-  #return(output)
+  # Add common gene numbers for 1 cancers, 2 cancers, 3 cancers,...all cancers. 
+  gene.num <- vector()
+  for (i in 1:length(dats)) gene.num <- c(gene.num,nrow(mat[which(mat[,"num.cancer"]==i),]))
+  t <- cbind(c(1:length(dats)),gene.num,round(gene.num/length(identi.all),4)*100)
+  rownames(t) <- c(1:length(dats))
+  colnames(t) <- c("# cancer", "com.gene.num","%.in.all")
+
+  return(list(mat=mat,summ=summ,cancsum=t))
 }
 
-Main_Select <- function(obj.list){
-  mat.list <- list() 
-  # select genes with p<0.05
-  for(i in 1:length(obj.list)){
-    n <- names(obj.list[i])
-    exp <- obj.list[[i]]$test
-    mat.list[[n]] <- SelectGene(SelectGene(exp,"t.adjust-p",0.05),"w.adjust-p",0.05)
-  }
- # add gene info 
-  for(i in 1:length(obj.list)){
-    mat.p <- obj.list[[i]]$exp$prob
-    mat.e <- mat.list[[i]]
-    mat.list[[i]] <-cbind(mat.e,geneID=as.character(mat.p[,gene.col]))
-  }
-  output <- CommAndSpec(mat.list,"geneID")
-  print(nrow(output))
-  print(nrow(output[which(output[,"cancer_num"]==1),]))
-  print(nrow(output[which(output[,"cancer_num"]==2),]))
-  print(nrow(output[which(output[,"cancer_num"]==3),]))
-  print(nrow(output[which(output[,"cancer_num"]==4),]))
-  print(nrow(output[which(output[,"cancer_num"]==5),]))
-
-  t<- output[which(output[,"cancer_num"]==1),]
-  print(nrow(t[which(!is.na(t[,"colon"])),]))
-  print(nrow(t[which(!is.na(t[,"liver"])),]))
-  print(nrow(t[which(!is.na(t[,"panc"])),]))
-  print(nrow(t[which(!is.na(t[,"renal"])),]))
-  print(nrow(t[which(!is.na(t[,"lung"])),]))
-  print(nrow(t[which(!is.na(t[,"breast"])),]))
-
-  return(output)
-}
-Step1 <- function(f){
+S1Parse <- function(f){
   # integrated function to anaysis GSE data
   #
   # Args:
@@ -310,25 +274,49 @@ Step1 <- function(f){
   #
   # Returns:
   #  list which contains: 
-  #     "oexp" for normalized expression data
+  #     "exp" for normalized expression data
   #     "pat" for patients information with divided for groups(control vs treat) 
   #     "prob" for probes information
   #     "test" for t.test and wilcox.test result
-
+  cat("\n1. extract information from GSE\n")
+  Sys.sleep(1.5)
   obj <- ParseGSE(f)
+  cat("\n2. Group the patients\n")
+  Sys.sleep(1.5)
   obj$pat <- GroupPat(obj$pat)  # Update obj.pat with adding group information
-  obj$oexp <- PreProc(obj$oexp)  # Update ojb.exp with normalization.
-  obj$test <- MatrixTest(obj$oexp,obj$pat[,"group"],manner=2)
-  obj$sig <- SelectThres(SelectThres(obj$oexp,"t.adjust-p",thres=0.001),"w.adjust-p",thres=0.001)  # Select significant genes with t.test and wilcox test
-  #o.list <- list("colon"=colon$exp$exp,"liver"=liver,"panc"=panc,"renal"=renal,"lung"=lung,"breast"=breast)
-  o.list <- list("colon"=colon$exp$exp,"liver"=liver$exp$exp,"panc"=panc,"renal"=renal,"lung"=lung,"breast"=breast)
-  p.lst <- list(colon=list(colon$exp$exp,colon$exp$prob),liver=list(liver$exp$exp,liver$exp$prob))
-  vprob <- list(colnames(colon$prob),colnames(liver$prob),colnames(panc$prob),colnames(renal$prob),colnames(lung$prob),colnames(breast$prob))
-
-  gene.ident <- CommChar(intersect,vprob)
-
-
+  cat("\n3. Preprocessing the value\n")
+  Sys.sleep(1.5)
+  obj$exp <- PreProc(obj$exp)  # Update obj.exp with normalization.
+  cat("\n4. Perform statistic tests\n")
+  Sys.sleep(1.5)
+  obj$test <- MatrixTest(obj$exp,obj$pat[,"group"],manner=2)  # perform t.test and wilcox.test
+  cat("\n5. Select significant genes\n")
+  Sys.sleep(1.5)
+  obj$sig <- SelectThres(SelectThres(obj$test,"t.adjust-p",thres=0.001),"w.adjust-p",thres=0.001)  # Select significant genes with t.test and wilcox test
+  cat("\n6. Return the findal result as list\n")
   return(obj)
 }
 
-elected <- Main_Select(o.list)
+S2MultiCanc <- function(dat.lst){
+  # Extract specific significant genes for each cancer.
+  #
+  # Args:
+  #  dat.lst: list of objects returned from S1Parse
+  #  list format: list(cancer.name=cancer.obj, cancer.name=cancer.obj)
+  #
+  # Returns:
+  #  list with "mat" contains matrix geneID vs. the gene in each matrix and total num matrix containing gene
+  #            "sum" contains statistic information summary matrix 
+ 
+  cat("\n1. add gene ID to expression matrix\n")
+  Sys.sleep(1.5)
+  temp.lst <- lapply(dat.lst,function(x) list("expression"=x$exp,"probes"=x$prob))
+  temp.geneid <- ProbsToGene(temp.lst)
+  cat("\n2. Select specific genes in signifiant matrix\n")
+  Sys.sleep(1.5)
+  output <- SelectSpec(temp.geneid,"geneID")
+  return(output)
+ }
+
+ canc.lst <- list("renal"=renal,"panc"=panc)
+ spec.gene <- S2MultiCanc(canc.lst)
