@@ -318,5 +318,38 @@ S2MultiCanc <- function(dat.lst){
   return(output)
  }
 
- canc.lst <- list("renal"=renal,"panc"=panc)
- spec.gene <- S2MultiCanc(canc.lst)
+MainPrimary <- function(v){
+  # input all constants and use functions porperaly, MainPrimary() will do all the thing.
+  #
+  # Args:
+  #  v: self-defined var, which is used to store the last result.
+  #
+  # Returns:
+  #  no returns, but this funciton will create global varabile to contains MA data and last result.
+  #  global vars: "breast", "lung", "colon", "panc", "renal", "liver"
+  #  results vars: inputed "v"
+
+  #cat("\n1. Parse breast cancer\n")
+  #Sys.sleep(1.5)
+  #breast <<- S1Parse("GSE15852")
+  #cat("\n1. Parse lung cancer\n")
+  #Sys.sleep(1.5)
+  #lung <<- S1Parse("GSE10072")
+  #cat("\n1. Parse colon cancer\n")
+  #Sys.sleep(1.5)
+  #colon <<- S1Parse("GSE6988")
+  cat("\n1. Parse panc cancer\n")
+  Sys.sleep(1.5)
+  panc <<- S1Parse("GSE15471")
+  cat("\n1. Parse renal cancer\n")
+  Sys.sleep(1.5)
+  renal <<- S1Parse("GSE15641")
+  #cat("\n1. Parse liver cancer\n")
+  #Sys.sleep(1.5)
+  #liver <<- S1Parse("GSE25097")
+
+  canc.lst <- list("renal"=renal, "panc"=panc)
+  #canc.lst <- list("breast"=breast, "lung"=lung, "colon"=colon, "renal"=renal, "panc"=panc, "liver"=liver)
+  
+  v <<- S2MultiCanc(canc.lst)
+
