@@ -10,7 +10,7 @@ Preproc(exp.matrix),
     return same matrix.
 
 MatrixTest(x,y,manner=1(if x vs y) /2(if x~y) ), 
-    return matrix. probs vs. categories(t.adj.p,w.p.adj)
+    return matrix. probs vs. categories(t.adj.p,w.p.adj,fc)
 
 SelectThres(matrix, p.val-colname, thres=0.05)
     return matrix with p.val < thres

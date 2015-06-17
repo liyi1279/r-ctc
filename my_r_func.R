@@ -103,7 +103,7 @@ PreProc <- function(exp){
 
 MatrixTest <- function(x,y,
                        manner=1){
-  # perform t.test and wilcox.text to every row of matrix
+  # perform t.test, wilcox.text and log(fold change) to every row of matrix
   #
   # Args:
   #  if manner == 1 (default): x is matrix 1, and y is matrix 2 for test(x,y)
@@ -111,7 +111,7 @@ MatrixTest <- function(x,y,
   #
   # Returns:
   #  matrix probes vs. categories of test result
-  #    test result: t.test and wilcox.test's statstic, p-value and adjust p-value
+  #    test result: t.test and wilcox.test's statstic, p-value and adjust p-value, log2 of fold change(y/x)
   
   d1 <- matrix()
   d2 <- matrix()
@@ -134,8 +134,9 @@ MatrixTest <- function(x,y,
   if(var.p <= 0.05) var.equal <- TRUE
   
   # Perform test
-  output <- matrix(ncol=4)
+  output <- matrix(ncol=5)
   
+  # Perform log2 of fold change of mean value
   avl.d1 <- rowSums(!is.na(d1))
   avl.d2 <- rowSums(!is.na(d2))
 
@@ -144,12 +145,14 @@ MatrixTest <- function(x,y,
   pd <- txtProgressBar(min=0,max=nrow(d1),style=3)
   for (i in 1:nrow(d1)){
     setTxtProgressBar(pd,i)
+    fc <- log2(mean(d2[i,])/mean(d1[i,]))  # d2 matrix/d1 matrix which means treat / control
     if(avl.d1[i]<3 | avl.d2[i]<3){
       output <- rbind(output,c(NA,NA,NA,NA))
     }else{
       t <- t.test(d1[i,],d2[i,],var.equal=var.equ)
-      w <- wilcox.test(d1[i,],d2[i,],var.equal=var.equ)
-      output <- rbind(output,c(t$p.value,t$statistic,w$p.value,w$statistic))
+      #w <- wilcox.test(d1[i,],d2[i,],var.equal=var.equ)
+      w <- list(p.value=1,statistic=2)
+      output <- rbind(output,c(t$p.value,t$statistic,w$p.value,w$statistic,fc))
     }
   }
   close(pd)
@@ -158,10 +161,11 @@ MatrixTest <- function(x,y,
   # Add adjust p value
   cat("* Adjusting p value with FDR\n\n")
   output <- cbind(output[,1:2],fdr.t.p=p.adjust(output[,1],method="BH"),
-                  output[,3:4],dfr.t.p=p.adjust(output[,3],method="BH"))
+                  output[,3:4],dfr.t.p=p.adjust(output[,3],method="BH"),
+		  output[,5])
 
   # Add rowname and colname
-  colnames(output) <- c("t.p-value","t.statistic","t.adjust-p","w.p-value","w.statistic","w.adjust-p")
+  colnames(output) <- c("t.p-value","t.statistic","t.adjust-p","w.p-value","w.statistic","w.adjust-p","logFC")
   output <- output[-1,]
   rownames(output) <- rownames(d1)
   return(output)
@@ -329,27 +333,26 @@ MainPrimary <- function(v){
   #  global vars: "breast", "lung", "colon", "panc", "renal", "liver"
   #  results vars: inputed "v"
 
-  #cat("\n1. Parse breast cancer\n")
-  #Sys.sleep(1.5)
-  #breast <<- S1Parse("GSE15852")
-  #cat("\n1. Parse lung cancer\n")
-  #Sys.sleep(1.5)
-  #lung <<- S1Parse("GSE10072")
-  #cat("\n1. Parse colon cancer\n")
-  #Sys.sleep(1.5)
-  #colon <<- S1Parse("GSE6988")
+  cat("\n1. Parse breast cancer\n")
+  Sys.sleep(1.5)
+  breast <<- S1Parse("GSE15852")
+  cat("\n1. Parse lung cancer\n")
+  Sys.sleep(1.5)
+  lung <<- S1Parse("GSE10072")
+  cat("\n1. Parse colon cancer\n")
+  Sys.sleep(1.5)
+  colon <<- S1Parse("GSE6988")
   cat("\n1. Parse panc cancer\n")
   Sys.sleep(1.5)
   panc <<- S1Parse("GSE15471")
   cat("\n1. Parse renal cancer\n")
   Sys.sleep(1.5)
   renal <<- S1Parse("GSE15641")
-  #cat("\n1. Parse liver cancer\n")
-  #Sys.sleep(1.5)
-  #liver <<- S1Parse("GSE25097")
+  cat("\n1. Parse liver cancer\n")
+  Sys.sleep(1.5)
+  liver <<- S1Parse("GSE25097")
 
-  canc.lst <- list("renal"=renal, "panc"=panc)
-  #canc.lst <- list("breast"=breast, "lung"=lung, "colon"=colon, "renal"=renal, "panc"=panc, "liver"=liver)
+  canc.lst <- list("breast"=breast, "lung"=lung, "colon"=colon, "renal"=renal, "panc"=panc, "liver"=liver)
   
   v <<- S2MultiCanc(canc.lst)
-
+}
