@@ -103,7 +103,7 @@ PreProc <- function(exp){
 
 MatrixTest <- function(x,y,
                        manner=1){
-  # perform t.test, wilcox.text and log(fold change) to every row of matrix
+  # perform t.test and wilcox.text to every row of matrix
   #
   # Args:
   #  if manner == 1 (default): x is matrix 1, and y is matrix 2 for test(x,y)
@@ -111,7 +111,7 @@ MatrixTest <- function(x,y,
   #
   # Returns:
   #  matrix probes vs. categories of test result
-  #    test result: t.test and wilcox.test's statstic, p-value and adjust p-value, log2 of fold change(y/x)
+  #    test result: t.test and wilcox.test's statstic, p-value and adjust p-value
   
   d1 <- matrix()
   d2 <- matrix()
@@ -134,9 +134,8 @@ MatrixTest <- function(x,y,
   if(var.p <= 0.05) var.equal <- TRUE
   
   # Perform test
-  output <- matrix(ncol=5)
+  output <- matrix(ncol=4)
   
-  # Perform log2 of fold change of mean value
   avl.d1 <- rowSums(!is.na(d1))
   avl.d2 <- rowSums(!is.na(d2))
 
@@ -145,13 +144,12 @@ MatrixTest <- function(x,y,
   pd <- txtProgressBar(min=0,max=nrow(d1),style=3)
   for (i in 1:nrow(d1)){
     setTxtProgressBar(pd,i)
-    fc <- mean(d2[i,],na.rm=T)/mean(d1[i,],na.rm=T)  # d2 matrix/d1 matrix which means treat / control
     if(avl.d1[i]<3 | avl.d2[i]<3){
       output <- rbind(output,c(NA,NA,NA,NA))
     }else{
       t <- t.test(d1[i,],d2[i,],var.equal=var.equ)
       w <- wilcox.test(d1[i,],d2[i,],var.equal=var.equ)
-      output <- rbind(output,c(t$p.value,t$statistic,w$p.value,w$statistic,fc))
+      output <- rbind(output,c(t$p.value,t$statistic,w$p.value,w$statistic))
     }
   }
   close(pd)
@@ -160,11 +158,10 @@ MatrixTest <- function(x,y,
   # Add adjust p value
   cat("* Adjusting p value with FDR\n\n")
   output <- cbind(output[,1:2],fdr.t.p=p.adjust(output[,1],method="BH"),
-                  output[,3:4],dfr.t.p=p.adjust(output[,3],method="BH"),
-		  output[,5])
+                  output[,3:4],dfr.t.p=p.adjust(output[,3],method="BH"))
 
   # Add rowname and colname
-  colnames(output) <- c("t.p-value","t.statistic","t.adjust-p","w.p-value","w.statistic","w.adjust-p","FC")
+  colnames(output) <- c("t.p-value","t.statistic","t.adjust-p","w.p-value","w.statistic","w.adjust-p")
   output <- output[-1,]
   rownames(output) <- rownames(d1)
   return(output)
@@ -216,9 +213,9 @@ ProbsToGene <- function(lst){
   output <- lapply(lst,function(x){
     data.frame(x[[1]],"geneID"=as.character(x[[2]][match(rownames(x[[1]]),x[[2]][,probe.ide]),gene.ide]))  # cbind cannot bind numeric and char together.
   })
-  
   return(output)
 }
+
 
 SelectSpec <- function(dats,identi){
   # Classify specific genes which exist in only one caner, or two cancers, three cancers....
@@ -242,8 +239,7 @@ SelectSpec <- function(dats,identi){
   identi.all <- identi.all[!identi.all %in% ""]  # remove blank elem like ""
 
   # Match total identifier list to each matrix data
-  #mat <- do.call("cbind",lapply(dats,function(x) match(identi.all, x[,identi])))
-  mat <- do.call("cbind",lapply(dats,function(x) x[match(identi.all, x[,identi]),"FC"]))
+  mat <- do.call("cbind",lapply(dats,function(x) match(identi.all, x[,identi])))
   mat <- data.frame("geneID"=identi.all,"num.cancer"=rowSums(!is.na(mat)),mat)
    
   # summarize specific genes numbers for each cancers.
@@ -258,7 +254,7 @@ SelectSpec <- function(dats,identi){
   }
   rownames(summ) <- summ[,1]
   summ <- summ[,-1]
-  colnames(summ) <- c("total.sig","specific gene","percent(%)")
+  colnames(summ) <- c("total","specific gene","percent(%)")
 
   # Add common gene numbers for 1 cancers, 2 cancers, 3 cancers,...all cancers. 
   gene.num <- vector()
@@ -315,7 +311,7 @@ S2MultiCanc <- function(dat.lst){
   cat("\n1. add gene ID to expression matrix\n")
   Sys.sleep(1.5)
   temp.lst <- lapply(dat.lst,function(x) list("expression"=x$sig,"probes"=x$prob))
-  temp.geneid <<- ProbsToGene(temp.lst)
+  temp.geneid <- ProbsToGene(temp.lst)
   cat("\n2. Select specific genes in signifiant matrix\n")
   Sys.sleep(1.5)
   output <- SelectSpec(temp.geneid,"geneID")
@@ -326,7 +322,7 @@ MainPrimary <- function(){
   # input all constants and use functions porperaly, MainPrimary() will do all the thing.
   #
   # Args:
-  #  v: self-defined var, which is used to store the last result.
+  # 
   #
   # Returns:
   #  no returns, but this funciton will create global varabile to contains MA data and last result.
@@ -352,6 +348,7 @@ MainPrimary <- function(){
   Sys.sleep(1.5)
   liver <<- S1Parse("GSE25097")
 
+  #canc.lst <- list("renal"=renal, "panc"=panc)
   canc.lst <- list("breast"=breast, "lung"=lung, "colon"=colon, "renal"=renal, "panc"=panc, "liver"=liver)
   
   PriMarkers <<- S2MultiCanc(canc.lst)
