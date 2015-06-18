@@ -145,13 +145,12 @@ MatrixTest <- function(x,y,
   pd <- txtProgressBar(min=0,max=nrow(d1),style=3)
   for (i in 1:nrow(d1)){
     setTxtProgressBar(pd,i)
-    fc <- log2(mean(d2[i,])/mean(d1[i,]))  # d2 matrix/d1 matrix which means treat / control
+    fc <- mean(d2[i,],na.rm=T)/mean(d1[i,],na.rm=T)  # d2 matrix/d1 matrix which means treat / control
     if(avl.d1[i]<3 | avl.d2[i]<3){
       output <- rbind(output,c(NA,NA,NA,NA))
     }else{
       t <- t.test(d1[i,],d2[i,],var.equal=var.equ)
-      #w <- wilcox.test(d1[i,],d2[i,],var.equal=var.equ)
-      w <- list(p.value=1,statistic=2)
+      w <- wilcox.test(d1[i,],d2[i,],var.equal=var.equ)
       output <- rbind(output,c(t$p.value,t$statistic,w$p.value,w$statistic,fc))
     }
   }
@@ -165,7 +164,7 @@ MatrixTest <- function(x,y,
 		  output[,5])
 
   # Add rowname and colname
-  colnames(output) <- c("t.p-value","t.statistic","t.adjust-p","w.p-value","w.statistic","w.adjust-p","logFC")
+  colnames(output) <- c("t.p-value","t.statistic","t.adjust-p","w.p-value","w.statistic","w.adjust-p","FC")
   output <- output[-1,]
   rownames(output) <- rownames(d1)
   return(output)
@@ -217,9 +216,9 @@ ProbsToGene <- function(lst){
   output <- lapply(lst,function(x){
     data.frame(x[[1]],"geneID"=as.character(x[[2]][match(rownames(x[[1]]),x[[2]][,probe.ide]),gene.ide]))  # cbind cannot bind numeric and char together.
   })
+  
   return(output)
 }
-
 
 SelectSpec <- function(dats,identi){
   # Classify specific genes which exist in only one caner, or two cancers, three cancers....
@@ -243,7 +242,8 @@ SelectSpec <- function(dats,identi){
   identi.all <- identi.all[!identi.all %in% ""]  # remove blank elem like ""
 
   # Match total identifier list to each matrix data
-  mat <- do.call("cbind",lapply(dats,function(x) match(identi.all, x[,identi])))
+  #mat <- do.call("cbind",lapply(dats,function(x) match(identi.all, x[,identi])))
+  mat <- do.call("cbind",lapply(dats,function(x) x[match(identi.all, x[,identi]),"FC"]))
   mat <- data.frame("geneID"=identi.all,"num.cancer"=rowSums(!is.na(mat)),mat)
    
   # summarize specific genes numbers for each cancers.
@@ -258,7 +258,7 @@ SelectSpec <- function(dats,identi){
   }
   rownames(summ) <- summ[,1]
   summ <- summ[,-1]
-  colnames(summ) <- c("total","specific gene","percent(%)")
+  colnames(summ) <- c("total.sig","specific gene","percent(%)")
 
   # Add common gene numbers for 1 cancers, 2 cancers, 3 cancers,...all cancers. 
   gene.num <- vector()
@@ -314,15 +314,15 @@ S2MultiCanc <- function(dat.lst){
  
   cat("\n1. add gene ID to expression matrix\n")
   Sys.sleep(1.5)
-  temp.lst <- lapply(dat.lst,function(x) list("expression"=x$exp,"probes"=x$prob))
-  temp.geneid <- ProbsToGene(temp.lst)
+  temp.lst <- lapply(dat.lst,function(x) list("expression"=x$sig,"probes"=x$prob))
+  temp.geneid <<- ProbsToGene(temp.lst)
   cat("\n2. Select specific genes in signifiant matrix\n")
   Sys.sleep(1.5)
   output <- SelectSpec(temp.geneid,"geneID")
   return(output)
  }
 
-MainPrimary <- function(v){
+MainPrimary <- function(){
   # input all constants and use functions porperaly, MainPrimary() will do all the thing.
   #
   # Args:
@@ -354,5 +354,6 @@ MainPrimary <- function(v){
 
   canc.lst <- list("breast"=breast, "lung"=lung, "colon"=colon, "renal"=renal, "panc"=panc, "liver"=liver)
   
-  v <<- S2MultiCanc(canc.lst)
+  PriMarkers <<- S2MultiCanc(canc.lst)
 }
+
