@@ -81,7 +81,7 @@ GroupPat <- function(pat){
   # Usage: t(matrix) : transpose matrix. 
 }
 
-PreProc <- function(exp){
+PreProc <- function(exp,prob){
   # normalizate microarray data with quantiles normalize
   # TODO: deal with NA values
   # 
@@ -91,6 +91,24 @@ PreProc <- function(exp){
   # Returns:
   #  same matrix but with value is normalized. 
   
+  # Mapping Probe with EntrezGeneID
+  idents <- colnames(prob)
+  for (i in 1:length(idents)){
+      idents[i] <- paste(i,"-",idents[i])
+  }
+
+  cat("\n")
+  print(idents)
+  cat("\n")
+  iput <- readline("choose which coloum stands for gene ID. (input index number)\n")
+  identifier <- colnames(prob)[as.numeric(iput)]
+  print(identifier)
+  geneList <- prob[,identifier]
+
+  exp <- aggregate(exp,by=list(EntrezID=geneList),FUN=mean)
+  rownames(exp) <- exp[,1]
+  exp <- exp[,-1]
+
   # Normalization
   print("normalization")
   exp <- normalizeQuantiles(exp)
@@ -353,4 +371,41 @@ MainPrimary <- function(){
   
   PriMarkers <<- S2MultiCanc(canc.lst)
 }
+
+MainPrimary <- function(){
+  # input all constants and use functions porperaly, MainPrimary() will do all the thing.
+  #
+  # Args:
+  # 
+  #
+  # Returns:
+  #  no returns, but this funciton will create global varabile to contains MA data and last result.
+  #  global vars: "breast", "lung", "colon", "panc", "renal", "liver"
+  #  results vars: inputed "v"
+
+  cat("\n1. Parse breast cancer\n")
+  Sys.sleep(1.5)
+  breast <<- S1Parse("GSE15852")
+  cat("\n1. Parse lung cancer\n")
+  Sys.sleep(1.5)
+  lung <<- S1Parse("GSE10072")
+  cat("\n1. Parse colon cancer\n")
+  Sys.sleep(1.5)
+  colon <<- S1Parse("GSE6988")
+  cat("\n1. Parse panc cancer\n")
+  Sys.sleep(1.5)
+  panc <<- S1Parse("GSE15471")
+  cat("\n1. Parse renal cancer\n")
+  Sys.sleep(1.5)
+  renal <<- S1Parse("GSE15641")
+  cat("\n1. Parse liver cancer\n")
+  Sys.sleep(1.5)
+  liver <<- S1Parse("GSE25097")
+
+  #canc.lst <- list("renal"=renal, "panc"=panc)
+  canc.lst <- list("breast"=breast, "lung"=lung, "colon"=colon, "renal"=renal, "panc"=panc, "liver"=liver)
+  
+  PriMarkers <<- S2MultiCanc(canc.lst)
+}
+
 
